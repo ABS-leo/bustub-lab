@@ -90,11 +90,16 @@ class BPlusTree {
   //remove
   template <typename N>
   void CoalesceOrRedistribute(N *node, Transaction *transaction);
+
   template <typename N>
-  void Coalesce(N *neighbor_node, N *node, BPlusTreePage *parent, int index, Transaction *transaction);
+  void Coalesce(N *neighbor_node, N *node, BPlusTreePage *parent, int index,
+             Transaction *transaction);
+
   template <typename N>
-  void Redistribute(N *neighbor_node, N *node, BPlusTreePage *parent, int index);
+  void Redistribute(N *neighbor_node, N *node, BPlusTreePage *parent, 
+                 int index, bool is_from_left);
   void AdjustRoot(BPlusTreePage *node);
+  void UpdateParentKey(BPlusTreePage *node);
   auto FindSibling(BPlusTreePage *node, BPlusTreePage **sibling, bool *is_prev) -> bool;
   auto FindIndexInParent(BPlusTreePage *node) -> int;
 
