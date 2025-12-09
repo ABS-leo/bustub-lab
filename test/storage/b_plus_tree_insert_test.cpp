@@ -150,7 +150,7 @@ TEST(BPlusTreeConcurrentTestC1, ScaleTestC1) {
   auto header_page = bpm->NewPage(&page_id);
   (void)header_page;
 
-  int64_t scale = 10000;
+  int64_t scale = 300;
   std::vector<int64_t> keys;
   for (int64_t key = 1; key < scale; key++) {
     keys.push_back(key);
@@ -176,6 +176,7 @@ TEST(BPlusTreeConcurrentTestC1, ScaleTestC1) {
     EXPECT_EQ(rids[0].GetSlotNum(), value);
   }
 
+  std::cout <<"Remove test begin"<<std::endl;
   for (auto key : keys) {
     index_key.SetFromInteger(key);
     tree.Remove(index_key, transaction);

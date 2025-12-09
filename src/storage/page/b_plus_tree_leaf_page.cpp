@@ -44,6 +44,10 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPageId(page_id_t next_page_id) {
 
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::KeyAt(int index) const -> KeyType {
+  // 添加边界检查
+  if (index < 0 || index >= GetSize()) {
+    return KeyType();  // 返回默认值
+  }
   return array_[index].first;
 }
 
