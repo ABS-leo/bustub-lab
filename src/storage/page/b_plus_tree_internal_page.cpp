@@ -25,6 +25,10 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(page_id_t page_id, page_id_t parent_id
 
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::KeyAt(int index) const -> KeyType {
+  // 添加边界检查
+  if (index < 0 || index >= GetSize()) {
+    return KeyType();  // 返回默认值
+  }
   return array_[index].first;
 }
 
@@ -37,6 +41,9 @@ INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const -> ValueType { 
   return array_[index].second; 
 }
+
+
+
 
 /**
  * 插入键值对到内部页面
@@ -76,18 +83,7 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Insert(const KeyType &key, const ValueType 
     array_[i] = array_[i - 1];
   }
   
-  // // 在insert_index位置插入
-  // if (insert_index == 1) {
-  //   // 特殊情况：插入到最开头（比所有有效键都小）
-  //   // array_[1] 的键是新的最小键，值是原来的最左子指针
-  //   array_[1] = MappingType(key, array_[0].second);
-    
-  //   // 更新 array_[0] 的值为新的最左子指针
-  //   array_[0].second = value;
-  // } else {
-  //   // 正常情况：在中间或末尾插入
-  //   array_[insert_index] = MappingType(key, value);
-  // }
+
   array_[insert_index] = MappingType(key, value);
   IncreaseSize(1);
   return true;
