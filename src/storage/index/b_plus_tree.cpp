@@ -426,9 +426,9 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
     // 叶子节点：size是键值对数量
     is_underflow = (node->GetSize() < node->GetMinSize());
   } else {
-    // 内部节点：size是孩子数量，最小孩子数 = 最小键数 + 1
+    // 内部节点：size是孩子数量，最小孩子数 = 最小键数 +1
     auto *internal_node = reinterpret_cast<InternalPage *>(node);
-    int min_children = internal_node->GetMinSize() + 1;
+    int min_children = internal_node->GetMinSize() ;
     is_underflow = (internal_node->GetSize() < min_children);
   }
   
@@ -449,7 +449,6 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
   auto *parent = reinterpret_cast<InternalPage *>(parent_page->GetData());
   
   // 找到node在父节点中的索引
-  // 注意：父节点是内部节点，size表示value的数量，有效键在index 1..size-1
   int node_index = -1;
   for (int i = 0; i < parent->GetSize(); i++) {
     // parent->ValueAt(i) 获取第i个孩子节点的page_id
@@ -467,24 +466,19 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
   
   // 尝试从左兄弟借
   if (node_index > 0) {
+    std::cout<<"从左兄弟借"<<std::endl;
     page_id_t left_sibling_id = parent->ValueAt(node_index - 1);
     auto *left_page = buffer_pool_manager_->FetchPage(left_sibling_id);
     auto *left_sibling = reinterpret_cast<N *>(left_page->GetData());
     
     // 判断左兄弟是否有富余
     bool left_has_surplus;
-    if (left_sibling->IsLeafPage()) {
-      // 叶子节点：直接比较键数
-      left_has_surplus = (left_sibling->GetSize() > left_sibling->GetMinSize());
-    } else {
-      // 内部节点：需要计算最小孩子数
-      auto *internal_left = reinterpret_cast<InternalPage *>(left_sibling);
-      int min_children = internal_left->GetMinSize() + 1;
-      left_has_surplus = (internal_left->GetSize() > min_children);
-    }
+    left_has_surplus = (left_sibling->GetSize() > left_sibling->GetMinSize());
+
     
     if (left_has_surplus) {
       // 从左兄弟重分配
+      std::cout<<"从左兄弟重分配"<<std::endl;
       Redistribute(left_sibling, node, parent, node_index - 1, true);
       buffer_pool_manager_->UnpinPage(left_page->GetPageId(), true);
       buffer_pool_manager_->UnpinPage(parent_page->GetPageId(), true);
@@ -496,24 +490,19 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
   
   // 尝试从右兄弟借
   if (node_index < parent->GetSize() - 1) {
+    std::cout<<"从右兄弟借"<<std::endl;
     page_id_t right_sibling_id = parent->ValueAt(node_index + 1);
     auto *right_page = buffer_pool_manager_->FetchPage(right_sibling_id);
     auto *right_sibling = reinterpret_cast<N *>(right_page->GetData());
     
     // 判断右兄弟是否有富余
     bool right_has_surplus;
-    if (right_sibling->IsLeafPage()) {
-      // 叶子节点：直接比较键数
-      right_has_surplus = (right_sibling->GetSize() > right_sibling->GetMinSize());
-    } else {
-      // 内部节点：需要计算最小孩子数
-      auto *internal_right = reinterpret_cast<InternalPage *>(right_sibling);
-      int min_children = internal_right->GetMinSize() + 1;
-      right_has_surplus = (internal_right->GetSize() > min_children);
-    }
+    right_has_surplus = (right_sibling->GetSize() > right_sibling->GetMinSize());
+
     
     if (right_has_surplus) {
       // 从右兄弟重分配
+      std::cout<<"从右兄弟重分配"<<std::endl;
       Redistribute(node, right_sibling, parent, node_index, false);
       buffer_pool_manager_->UnpinPage(right_page->GetPageId(), true);
       buffer_pool_manager_->UnpinPage(parent_page->GetPageId(), true);
@@ -526,24 +515,19 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
   // 需要合并
   if (node_index > 0) {
     // 与左兄弟合并
+    std::cout<<"与左兄弟合并"<<std::endl;
     page_id_t left_sibling_id = parent->ValueAt(node_index - 1);
     auto *left_page = buffer_pool_manager_->FetchPage(left_sibling_id);
     auto *left_sibling = reinterpret_cast<N *>(left_page->GetData());
     
     // 检查是否可以合并
     // 对于内部节点，合并条件：left_size + node_size <= max_children
-    // max_children = max_size + 1 (因为size是孩子数)
+    // max_children = max_size 
     bool can_coalesce;
-    if (node->IsLeafPage()) {
-      // 叶子节点：直接比较键数
-      can_coalesce = (left_sibling->GetSize() + node->GetSize() <= leaf_max_size_);
-    } else {
-      // 内部节点：需要比较孩子数
-      // max_children = internal_max_size_ + 1
-      can_coalesce = (left_sibling->GetSize() + node->GetSize() <= internal_max_size_ + 1);
-    }
+    can_coalesce = (left_sibling->GetSize() + node->GetSize() <= left_sibling->GetMaxSize());
     
     if (can_coalesce) {
+      std::cout<<"和左节点合并"<<std::endl;
       Coalesce(left_sibling, node, parent, node_index - 1, transaction);
       buffer_pool_manager_->UnpinPage(left_page->GetPageId(), true);
     } else {
@@ -558,13 +542,11 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
     
     // 检查是否可以合并
     bool can_coalesce;
-    if (node->IsLeafPage()) {
-      can_coalesce = (node->GetSize() + right_sibling->GetSize() <= leaf_max_size_);
-    } else {
-      can_coalesce = (node->GetSize() + right_sibling->GetSize() <= internal_max_size_ + 1);
-    }
+    can_coalesce = (node->GetSize() + right_sibling->GetSize() <= right_sibling->GetMaxSize());
+
     
     if (can_coalesce) {
+      std::cout<<"和右节点合并"<<std::endl;
       Coalesce(node, right_sibling, parent, node_index, transaction);
       buffer_pool_manager_->UnpinPage(right_page->GetPageId(), true);
     } else {
@@ -593,36 +575,21 @@ void BPLUSTREE_TYPE::Coalesce(N *neighbor_node, N *node, BPlusTreePage *parent, 
     
     // 更新叶子节点的链表指针
     leaf_neighbor->SetNextPageId(leaf_node->GetNextPageId());
-    // 注意：你的叶子节点没有SetPrevPageId方法，所以这行要去掉
+    
   } else {
     auto *internal_node = reinterpret_cast<InternalPage *>(node);
     auto *internal_neighbor = reinterpret_cast<InternalPage *>(neighbor_node);
     
-    // 首先插入父节点的分隔key
-    KeyType parent_key = internal_parent->KeyAt(index + 1);
+    // 首先插入父节点的分隔key，考虑临界
+    KeyType parent_key = internal_parent->KeyAt(index);
     
-    if (neighbor_node->GetPageId() == node->GetPageId()) {
-      // 与右兄弟合并（neighbor是右兄弟）
-      internal_neighbor->Insert(parent_key, internal_node->ValueAt(0), comparator_);
+    internal_neighbor->Insert(parent_key, internal_node->ValueAt(0), comparator_);
       
-      // 然后将右兄弟的所有键值对移动到左兄弟
-      for (int i = 0; i < internal_node->GetSize(); i++) {
-        if (i > 0) {
-          internal_neighbor->Insert(internal_node->KeyAt(i), internal_node->ValueAt(i), comparator_);
-        }
-      }
-    } else {
-      // 与左兄弟合并（neighbor是左兄弟）
-      internal_neighbor->Insert(parent_key, internal_node->ValueAt(0), comparator_);
+    // 然后将右兄弟的所有键值对移动到左兄弟
+    for (int i = 1; i < internal_node->GetSize(); i++) {
+      internal_neighbor->Insert(internal_node->KeyAt(i), internal_node->ValueAt(i), comparator_);
       
-      // 然后将node的所有键值对移动到左兄弟
-      for (int i = 0; i < internal_node->GetSize(); i++) {
-        if (i > 0) {
-          internal_neighbor->Insert(internal_node->KeyAt(i), internal_node->ValueAt(i), comparator_);
-        }
-      }
     }
-    
     // 更新所有被移动的子页面的父指针
     for (int i = 0; i < internal_node->GetSize(); i++) {
       page_id_t child_page_id = internal_node->ValueAt(i);
@@ -635,24 +602,20 @@ void BPLUSTREE_TYPE::Coalesce(N *neighbor_node, N *node, BPlusTreePage *parent, 
     }
   }
   
-  // 从父节点中删除对应的key和孩子
+  // 从父节点中删除对应的key和孩子,考虑临界
   internal_parent->RemoveAt(index);
   
   // 如果父节点太小，递归处理
   bool parent_underflow;
-  if (internal_parent->IsLeafPage()) {
-    parent_underflow = (internal_parent->GetSize() < internal_parent->GetMinSize());
-  } else {
-    int min_children = internal_parent->GetMinSize() + 1;
-    parent_underflow = (internal_parent->GetSize() < min_children);
-  }
+  parent_underflow = (internal_parent->GetSize() < internal_parent->GetMinSize());
+
   
-  if (parent_underflow && !internal_parent->IsRootPage()) {
-    CoalesceOrRedistribute(internal_parent, transaction);
-  } else if (internal_parent->IsRootPage() && internal_parent->GetSize() == 1) {
+  if (parent_underflow &&internal_parent->IsRootPage() && internal_parent->GetSize() == 1) {
     AdjustRoot(internal_parent);
-  } else {
+  } else if (parent_underflow && internal_parent->IsRootPage()&& internal_parent->GetSize() >1) {
     buffer_pool_manager_->UnpinPage(parent->GetPageId(), true);
+  }else{
+    CoalesceOrRedistribute(internal_parent, transaction);
   }
   
   // 删除node页面
@@ -678,22 +641,10 @@ void BPLUSTREE_TYPE::Redistribute(N *neighbor_node, N *node, BPlusTreePage *pare
       
       leaf_neighbor->RemoveAt(last_index);
       
-      // 手动在叶子节点最前面插入
-      // 1. 增加大小
-      leaf_node->IncreaseSize(1);
-      
-      // 2. 将现有元素向后移动
-      for (int i = leaf_node->GetSize() - 1; i > 0; i--) {
-        leaf_node->GetItem(i) = leaf_node->GetItem(i - 1);
-      }
-      
-      // 3. 在位置0插入新元素
-      // 对于叶子节点，MappingType是pair<KeyType, RID>
-      leaf_node->GetItem(0).first = borrowed_key;
-      leaf_node->GetItem(0).second = borrowed_value;
-      
-      // 更新父节点中的key
-      internal_parent->SetKeyAt(index + 1, leaf_node->KeyAt(0));
+      leaf_node->Insert(borrowed_key, borrowed_value, comparator_);
+
+      // 更新父节点中的key，考虑临界
+      internal_parent->SetKeyAt(index , leaf_node->KeyAt(0));
     } else {
       // 从右兄弟借第一个元素
       KeyType borrowed_key = leaf_neighbor->KeyAt(0);
@@ -701,11 +652,11 @@ void BPLUSTREE_TYPE::Redistribute(N *neighbor_node, N *node, BPlusTreePage *pare
       
       leaf_neighbor->RemoveAt(0);
       
-      // 在叶子节点中插入到最后面 - 使用Insert方法
+
       leaf_node->Insert(borrowed_key, borrowed_value, comparator_);
       
-      // 更新父节点中的key
-      internal_parent->SetKeyAt(index + 1, leaf_neighbor->KeyAt(0));
+      // 更新父节点中的key，考虑临界
+      internal_parent->SetKeyAt(index+1, leaf_neighbor->KeyAt(0));
     }
   } else {
     // 内部节点的重分配
@@ -714,7 +665,7 @@ void BPLUSTREE_TYPE::Redistribute(N *neighbor_node, N *node, BPlusTreePage *pare
     
     if (is_from_left) {
       // 从左兄弟借
-      int last_key_index = internal_neighbor->GetSize() - 2; // 最后一个有效键的索引
+      int last_key_index = internal_neighbor->GetSize() - 1; // 最后一个有效键的索引
       int last_child_index = internal_neighbor->GetSize() - 1; // 最后一个孩子的索引
       
       KeyType borrowed_key = internal_neighbor->KeyAt(last_key_index);
@@ -723,31 +674,26 @@ void BPLUSTREE_TYPE::Redistribute(N *neighbor_node, N *node, BPlusTreePage *pare
       // 从邻居节点删除
       internal_neighbor->RemoveAt(last_key_index);
       
-      // 获取父节点中对应的key
-      KeyType parent_key = internal_parent->KeyAt(index + 1);
       
       // 将父节点的key下移到当前节点
       // 1. 先将当前节点所有元素右移一位
       for (int i = internal_node->GetSize(); i > 0; i--) {
-        if (i < internal_node->GetSize()) {
-          internal_node->GetItem(i) = internal_node->GetItem(i - 1);
-        }
+        internal_node->GetItem(i) = internal_node->GetItem(i - 1);
       }
       
       // 2. 在位置0插入借来的孩子（键为无效）
-      // 对于内部节点，MappingType是pair<KeyType, page_id_t>
       internal_node->GetItem(0).first = KeyType();  // 无效键
       internal_node->GetItem(0).second = borrowed_child_id;
       
       // 3. 更新位置1的键（如果存在）
       if (internal_node->GetSize() > 0) {
-        internal_node->GetItem(1).first = parent_key;
+        internal_node->GetItem(1).first = internal_parent->KeyAt(index );
       }
       
       internal_node->IncreaseSize(1);
       
-      // 4. 将借来的key上移到父节点
-      internal_parent->SetKeyAt(index + 1, borrowed_key);
+      // 4. 将借来的key上移到父节点，考虑临界
+      internal_parent->SetKeyAt(index, borrowed_key);
       
       // 更新被移动孩子的父指针
       auto *child_page = buffer_pool_manager_->FetchPage(borrowed_child_id);
@@ -757,22 +703,22 @@ void BPLUSTREE_TYPE::Redistribute(N *neighbor_node, N *node, BPlusTreePage *pare
         buffer_pool_manager_->UnpinPage(child_page->GetPageId(), true);
       }
     } else {
-      // 从右兄弟借
-      KeyType borrowed_key = internal_neighbor->KeyAt(1);
+      // 从右兄弟借，考虑临界
+      KeyType borrowed_key = internal_parent->KeyAt(index + 1);
       page_id_t borrowed_child_id = internal_neighbor->ValueAt(0);
       
       // 从邻居节点删除第一个有效键和第一个孩子
       internal_neighbor->RemoveAt(0);
+      KeyType neighbor_new_index_value = internal_node->GetItem(0).first;
+      //考虑；临界
+      internal_parent->SetKeyAt(index + 1, neighbor_new_index_value);
       
-      // 获取父节点中对应的key
-      KeyType parent_key = internal_parent->KeyAt(index + 1);
       
-      // 将父节点的key下移到当前节点
+
       // 使用Insert方法插入到最后
-      internal_node->Insert(parent_key, borrowed_child_id, comparator_);
+      internal_node->Insert(borrowed_key, borrowed_child_id, comparator_);
       
-      // 将借来的key上移到父节点
-      internal_parent->SetKeyAt(index + 1, borrowed_key);
+
       
       // 更新被移动孩子的父指针
       auto *child_page = buffer_pool_manager_->FetchPage(borrowed_child_id);
