@@ -48,6 +48,7 @@ TEST(BPlusTreeConcurrentTestC1, InsertTest1) {
   (void)header_page;
 
   std::vector<int64_t> keys = {1, 2, 3, 4, 5};
+
   for (auto key : keys) {
     int64_t value = key & 0xFFFFFFFF;
     rid.Set(static_cast<int32_t>(key >> 32), value);
@@ -100,6 +101,7 @@ TEST(BPlusTreeConcurrentTestC1, InsertTest2) {
   (void)header_page;
 
   std::vector<int64_t> keys = {5, 4, 3, 2, 1};
+  
   for (auto key : keys) {
     int64_t value = key & 0xFFFFFFFF;
     rid.Set(static_cast<int32_t>(key >> 32), value);
@@ -156,15 +158,21 @@ TEST(BPlusTreeConcurrentTestC1, ScaleTestC1) {
     keys.push_back(key);
   }
 
-  // randomized the insertion order
+  // for (int64_t i = scale; i >0; i--) {
+  //   keys.push_back(i);
+  // }
+
+  //randomized the insertion order
   auto rng = std::default_random_engine{};
   std::shuffle(keys.begin(), keys.end(), rng);
+
   for (auto key : keys) {
     int64_t value = key & 0xFFFFFFFF;
     rid.Set(static_cast<int32_t>(key >> 32), value);
     index_key.SetFromInteger(key);
     tree.Insert(index_key, rid, transaction);
   }
+
   std::vector<RID> rids;
   for (auto key : keys) {
     rids.clear();
@@ -177,11 +185,11 @@ TEST(BPlusTreeConcurrentTestC1, ScaleTestC1) {
   }
 
 
-  std::cout <<"Remove test begin"<<std::endl;
-  int seq=0;
+ 
+ 
   for (auto key : keys) {
     index_key.SetFromInteger(key);
-    std::cout <<"Removing seq: "<<++seq<<std::endl;
+    // std::cout <<"Removing key: "<<key<<std::endl;
     tree.Remove(index_key, transaction);
   }
 

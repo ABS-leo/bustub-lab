@@ -112,6 +112,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
   
   // 检查是否需要合并或重分配
   if (leaf_node->GetSize() < leaf_node->GetMinSize()) {
+    //std::cout<<leaf_node->GetPageId()<<" 叶子节点大小: "<<leaf_node->GetSize()<<", 最小大小: "<<leaf_node->GetMinSize()<<std::endl;
     CoalesceOrRedistribute(leaf_node, transaction);
   } else {
     buffer_pool_manager_->UnpinPage(leaf_page->GetPageId(), true);
@@ -302,7 +303,7 @@ auto BPLUSTREE_TYPE::InsertIntoLeaf(const KeyType &key, const ValueType &value, 
     // Unpin新创建的叶子页面
     buffer_pool_manager_->UnpinPage(new_leaf->GetPageId(), true);
   }
-  
+ 
   buffer_pool_manager_->UnpinPage(leaf_page->GetPageId(), true);
   return true;
 }
@@ -401,7 +402,6 @@ void BPLUSTREE_TYPE::InsertIntoParent(BPlusTreePage *old_node, const KeyType &ke
   if (parent->GetSize() >= internal_max_size_) {
     auto [new_parent, split_key] = Split(parent);  // 使用结构化绑定
     if (new_parent != nullptr) {
-      // 注意：这里传递的是 split_key，不是 new_parent->KeyAt(1)!
       InsertIntoParent(parent, split_key, new_parent, transaction);
       buffer_pool_manager_->UnpinPage(new_parent->GetPageId(), true);
     }
@@ -420,21 +420,11 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
   }
 
   // 判断节点是否下溢
-  // 注意：GetMinSize()返回最小键数，但内部节点的size是孩子数量
   bool is_underflow;
-  if (node->IsLeafPage()) {
-    // 叶子节点：size是键值对数量
-    is_underflow = (node->GetSize() < node->GetMinSize());
-  } else {
-    // 内部节点：size是孩子数量，最小孩子数 = 最小键数 +1
-    auto *internal_node = reinterpret_cast<InternalPage *>(node);
-    int min_children = internal_node->GetMinSize() ;
-    is_underflow = (internal_node->GetSize() < min_children);
-  }
+  is_underflow = (node->GetSize() < node->GetMinSize());
   
-  // 如果不下溢，直接返回（但需要更新父节点key）
+  // 如果不下溢，直接返回
   if (!is_underflow) {
-    UpdateParentKey(node);
     buffer_pool_manager_->UnpinPage(node->GetPageId(), true);
     return;
   }
@@ -466,7 +456,7 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
   
   // 尝试从左兄弟借
   if (node_index > 0) {
-    std::cout<<"从左兄弟借"<<std::endl;
+    //std::cout<<"从左兄弟借"<<std::endl;
     page_id_t left_sibling_id = parent->ValueAt(node_index - 1);
     auto *left_page = buffer_pool_manager_->FetchPage(left_sibling_id);
     auto *left_sibling = reinterpret_cast<N *>(left_page->GetData());
@@ -478,7 +468,6 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
     
     if (left_has_surplus) {
       // 从左兄弟重分配
-      std::cout<<"从左兄弟重分配"<<std::endl;
       Redistribute(left_sibling, node, parent, node_index - 1, true);
       buffer_pool_manager_->UnpinPage(left_page->GetPageId(), true);
       buffer_pool_manager_->UnpinPage(parent_page->GetPageId(), true);
@@ -490,7 +479,7 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
   
   // 尝试从右兄弟借
   if (node_index < parent->GetSize() - 1) {
-    std::cout<<"从右兄弟借"<<std::endl;
+    //std::cout<<"从右兄弟借"<<std::endl;
     page_id_t right_sibling_id = parent->ValueAt(node_index + 1);
     auto *right_page = buffer_pool_manager_->FetchPage(right_sibling_id);
     auto *right_sibling = reinterpret_cast<N *>(right_page->GetData());
@@ -502,7 +491,7 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
     
     if (right_has_surplus) {
       // 从右兄弟重分配
-      std::cout<<"从右兄弟重分配"<<std::endl;
+      //std::cout<<"从右兄弟重分配"<<std::endl;
       Redistribute(node, right_sibling, parent, node_index, false);
       buffer_pool_manager_->UnpinPage(right_page->GetPageId(), true);
       buffer_pool_manager_->UnpinPage(parent_page->GetPageId(), true);
@@ -515,7 +504,7 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
   // 需要合并
   if (node_index > 0) {
     // 与左兄弟合并
-    std::cout<<"与左兄弟合并"<<std::endl;
+    //std::cout<<"与左兄弟合并"<<std::endl;
     page_id_t left_sibling_id = parent->ValueAt(node_index - 1);
     auto *left_page = buffer_pool_manager_->FetchPage(left_sibling_id);
     auto *left_sibling = reinterpret_cast<N *>(left_page->GetData());
@@ -527,11 +516,10 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
     can_coalesce = (left_sibling->GetSize() + node->GetSize() <= left_sibling->GetMaxSize());
     
     if (can_coalesce) {
-      std::cout<<"和左节点合并"<<std::endl;
-      Coalesce(left_sibling, node, parent, node_index - 1, transaction);
+      Coalesce(left_sibling, node, parent, node_index , transaction);
       buffer_pool_manager_->UnpinPage(left_page->GetPageId(), true);
     } else {
-      // 不能合并，这可能是个错误状态
+      
       buffer_pool_manager_->UnpinPage(left_page->GetPageId(), false);
     }
   } else if (node_index < parent->GetSize() - 1) {
@@ -546,9 +534,9 @@ void BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
 
     
     if (can_coalesce) {
-      std::cout<<"和右节点合并"<<std::endl;
-      Coalesce(node, right_sibling, parent, node_index, transaction);
-      buffer_pool_manager_->UnpinPage(right_page->GetPageId(), true);
+      //std::cout<<"和右节点合并"<<std::endl;
+      Coalesce(node, right_sibling, parent, node_index+1, transaction);
+      //buffer_pool_manager_->UnpinPage(right_page->GetPageId(), true);
     } else {
       buffer_pool_manager_->UnpinPage(right_page->GetPageId(), false);
     }
@@ -572,7 +560,7 @@ void BPLUSTREE_TYPE::Coalesce(N *neighbor_node, N *node, BPlusTreePage *parent, 
     for (int i = 0; i < leaf_node->GetSize(); i++) {
       leaf_neighbor->Insert(leaf_node->KeyAt(i), leaf_node->ValueAt(i), comparator_);
     }
-    
+
     // 更新叶子节点的链表指针
     leaf_neighbor->SetNextPageId(leaf_node->GetNextPageId());
     
@@ -603,7 +591,9 @@ void BPLUSTREE_TYPE::Coalesce(N *neighbor_node, N *node, BPlusTreePage *parent, 
   }
   
   // 从父节点中删除对应的key和孩子,考虑临界
+
   internal_parent->RemoveAt(index);
+
   
   // 如果父节点太小，递归处理
   bool parent_underflow;
